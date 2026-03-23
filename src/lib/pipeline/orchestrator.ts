@@ -133,14 +133,16 @@ function getDb() {
 async function updateSessionStatus(
   sessionId: string,
   status: string,
-  completedAt?: string,
+  extra?: { completed_at?: string; current_stage?: string; progress_message?: string },
 ) {
   const db = getDb();
   if (!db) return;
 
   try {
     const update: Record<string, unknown> = { status };
-    if (completedAt) update.completed_at = completedAt;
+    if (extra?.completed_at) update.completed_at = extra.completed_at;
+    if (extra?.current_stage) update.current_stage = extra.current_stage;
+    if (extra?.progress_message) update.progress_message = extra.progress_message;
 
     const { error } = await db
       .from('search_sessions')
@@ -344,7 +346,10 @@ export async function runPipeline(
       status: 'in_progress',
       started_at: new Date().toISOString(),
     });
-    await updateSessionStatus(sessionId, 'processing');
+    await updateSessionStatus(sessionId, 'processing', {
+      current_stage: 'collecting',
+      progress_message: '후보 장소를 수집하고 있습니다...',
+    });
 
     collectResult = await collectPlaces(destination, category, excludePlaceIds);
 
@@ -369,6 +374,10 @@ export async function runPipeline(
       status: 'in_progress',
       started_at: new Date().toISOString(),
     });
+    await updateSessionStatus(sessionId, 'processing', {
+      current_stage: 'normalizing',
+      progress_message: state.progress.message,
+    });
 
     normalizeResult = await normalizeCandidates(collectResult.places);
 
@@ -388,6 +397,10 @@ export async function runPipeline(
     updateStage(state, 'analyzing', {
       status: 'in_progress',
       started_at: new Date().toISOString(),
+    });
+    await updateSessionStatus(sessionId, 'processing', {
+      current_stage: 'analyzing',
+      progress_message: state.progress.message,
     });
 
     // 수집 단계의 실제 데이터를 분석 컨텍스트로 전달
@@ -446,6 +459,10 @@ export async function runPipeline(
       status: 'in_progress',
       started_at: new Date().toISOString(),
     });
+    await updateSessionStatus(sessionId, 'processing', {
+      current_stage: 'scoring',
+      progress_message: state.progress.message,
+    });
 
     scored = await scorePlaces(analyses, regionType);
 
@@ -470,6 +487,10 @@ export async function runPipeline(
     updateStage(state, 'saving', {
       status: 'in_progress',
       started_at: new Date().toISOString(),
+    });
+    await updateSessionStatus(sessionId, 'processing', {
+      current_stage: 'saving',
+      progress_message: '결과를 저장하고 있습니다...',
     });
 
     const placeIdMap = await savePlacesToDb(sessionId, normalizeResult.places);
@@ -554,7 +575,11 @@ export async function runPipeline(
       console.warn('[orchestrator] 결과 파일 저장 실패:', err);
     }
 
-    await updateSessionStatus(sessionId, 'completed', new Date().toISOString());
+    await updateSessionStatus(sessionId, 'completed', {
+      completed_at: new Date().toISOString(),
+      current_stage: 'completed',
+      progress_message: '리서치 완료!',
+    });
 
     return {
       session_id: sessionId,
@@ -577,7 +602,10 @@ export async function runPipeline(
       }
     }
 
-    await updateSessionStatus(sessionId, 'failed');
+    await updateSessionStatus(sessionId, 'failed', {
+      current_stage: 'failed',
+      progress_message: `파이프라인 실패: ${errorMsg}`,
+    });
 
     return {
       session_id: sessionId,

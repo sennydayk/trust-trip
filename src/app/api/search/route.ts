@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { startPipelineAsync, getPipelineState, initState } from '@/lib/pipeline/orchestrator';
 
+// Vercel 서버리스 함수 타임아웃 연장 (기본 10초 → 300초)
+// Free: 최대 60초, Pro: 최대 300초
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

@@ -179,6 +179,19 @@ async function fetchBlogContent(blogUrl: string): Promise<BlogContentResult> {
     }
   } catch {}
 
+  // 3차: Puppeteer/Browserless 폴백 (환경변수 설정 시)
+  if (process.env.BROWSERLESS_TOKEN || process.env.USE_LOCAL_PUPPETEER === 'true') {
+    try {
+      const { fetchWithPuppeteer } = await import('./puppeteer-fetcher');
+      const result = await fetchWithPuppeteer(blogUrl);
+      if (result.text.length > 100) {
+        return { text: (result.text + ' ' + result.imageAlts).slice(0, 3000), thumbnail: null };
+      }
+    } catch (err) {
+      console.warn('[blog-light] Puppeteer 폴백 실패:', err instanceof Error ? err.message : err);
+    }
+  }
+
   return { text: '', thumbnail: null };
 }
 

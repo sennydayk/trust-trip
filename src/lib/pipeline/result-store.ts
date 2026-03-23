@@ -4,7 +4,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const RESULTS_DIR = path.join(process.cwd(), 'data', 'results');
+// Vercel은 읽기 전용 파일시스템 — /tmp만 쓰기 가능
+const RESULTS_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'data', 'results')
+  : path.join(process.cwd(), 'data', 'results');
 
 interface StoredResult {
   session_id: string;
