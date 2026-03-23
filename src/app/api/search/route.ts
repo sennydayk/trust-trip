@@ -1,17 +1,11 @@
-// 검색 시작 엔드포인트 — 세션 생성 → 파이프라인 비동기 시작 → 즉시 sessionId 반환
+// 검색 시작 엔드포인트 — 세션 생성만 수행, 파이프라인은 별도 엔드포인트에서 실행
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { runPipeline, getPipelineState, initState } from '@/lib/pipeline/orchestrator';
-import { waitUntil } from '@vercel/functions';
-
-// Vercel 서버리스 함수 타임아웃 연장 (기본 10초 → 300초)
-// Free: 최대 60초, Pro: 최대 300초
-export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { destination, category, excludePlaceIds } = body;
+    const { destination, category } = body;
 
     if (!destination) {
       return NextResponse.json(
@@ -20,7 +14,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 초기값은 domestic — collect 단계에서 실제 주소 기반으로 재결정됨
     const regionType = 'domestic' as 'domestic' | 'overseas';
     const cat = category ?? '맛집';
     const query = `${destination} ${cat}`;
@@ -52,23 +45,13 @@ export async function POST(request: NextRequest) {
       sessionId = crypto.randomUUID();
     }
 
-    // 응답 전에 상태를 먼저 초기화 — 클라이언트 폴링 시 404 방지
-    initState(sessionId);
-
-    // 파이프라인 비동기 시작 — waitUntil로 응답 후에도 함수 유지
-    const pipelinePromise = runPipeline(sessionId, destination, cat, regionType, excludePlaceIds)
-      .catch(err => console.error(`[search] 파이프라인 에러 (${sessionId}):`, err));
-    waitUntil(pipelinePromise);
-
     return NextResponse.json({
       session_id: sessionId,
       query,
       destination,
       category: cat,
       region_type: regionType,
-      status: 'processing',
-      status_url: `/api/pipeline/status/${sessionId}`,
-      results_url: `/api/results/${sessionId}`,
+      status: 'pending',
     });
   } catch (error) {
     console.error('[search] 요청 처리 실패:', error);
@@ -79,25 +62,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 완료된 세션 결과를 직접 가져오는 동기 엔드포인트 (테스트용)
-export async function GET(request: NextRequest) {
-  const sessionId = request.nextUrl.searchParams.get('session_id');
-  if (!sessionId) {
-    return NextResponse.json({ error: 'session_id 파라미터가 필요합니다.' }, { status: 400 });
-  }
-
-  const state = getPipelineState(sessionId);
-  if (!state) {
-    return NextResponse.json({ error: '세션을 찾을 수 없습니다.' }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    session_id: sessionId,
-    current_stage: state.current_stage,
-    progress: state.progress,
-  });
-}
-
 function getDb() {
   try {
     return createServiceClient();
@@ -105,5 +69,3 @@ function getDb() {
     return null;
   }
 }
-
-// isOverseas 하드코딩 제거됨 — collect 단계에서 수집된 장소 주소 기반으로 동적 판별

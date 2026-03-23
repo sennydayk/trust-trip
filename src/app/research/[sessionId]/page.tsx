@@ -230,6 +230,23 @@ export default function ResearchPage({
     }
   }, [sessionId]);
 
+  // 파이프라인 실행 트리거 (run 엔드포인트 호출)
+  const pipelineTriggered = useRef(false);
+  useEffect(() => {
+    if (pipelineTriggered.current) return;
+    pipelineTriggered.current = true;
+
+    fetch(`/api/pipeline/run/${sessionId}`, { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        console.log('[research] 파이프라인 완료:', data);
+      })
+      .catch(err => {
+        console.error('[research] 파이프라인 실행 실패:', err);
+      });
+  }, [sessionId]);
+
+  // 상태 폴링 (Supabase에서 진행 상태 읽기)
   useEffect(() => {
     let active = true;
     let pollCount = 0;
@@ -249,7 +266,8 @@ export default function ResearchPage({
       setTimeout(doPoll, nextInterval);
     }
 
-    doPoll();
+    // 약간 딜레이 후 폴링 시작 (run이 먼저 Supabase에 기록하도록)
+    setTimeout(doPoll, 1000);
     return () => { active = false; };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
