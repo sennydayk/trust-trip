@@ -227,19 +227,21 @@ export async function crawlNaverBlogsLight(
 
   console.log(`[naver-api] "${destination} ${category}" → ${allPosts.length}건 수집`);
 
-  // 상위 건 본문 fetch (광고 키워드 감지용)
-  const toFetch = allPosts.slice(0, maxPostsToFetch);
-  for (let i = 0; i < toFetch.length; i++) {
-    const content = await fetchBlogContent(toFetch[i].url);
-    if (content.text.length > toFetch[i].snippet.length) {
-      toFetch[i].snippet = content.text.slice(0, 2000);
-    }
-    if (content.thumbnail) {
-      toFetch[i].thumbnail = content.thumbnail;
-    }
-    // API는 rate limit이 넉넉하므로 본문 fetch 간 짧은 딜레이만
-    if (i < toFetch.length - 1) {
-      await new Promise(r => setTimeout(r, 300));
+  // 상위 건 본문 fetch (광고 키워드 감지용) — 병렬 처리로 최적화
+  const toFetch = allPosts.slice(0, Math.min(maxPostsToFetch, 10));
+  const fetchResults = await Promise.allSettled(
+    toFetch.map(post => fetchBlogContent(post.url)),
+  );
+
+  for (let i = 0; i < fetchResults.length; i++) {
+    if (fetchResults[i].status === 'fulfilled') {
+      const content = (fetchResults[i] as PromiseFulfilledResult<BlogContentResult>).value;
+      if (content.text.length > toFetch[i].snippet.length) {
+        toFetch[i].snippet = content.text.slice(0, 2000);
+      }
+      if (content.thumbnail) {
+        toFetch[i].thumbnail = content.thumbnail;
+      }
     }
   }
 
@@ -287,16 +289,24 @@ export async function searchBlogsForPlace(
     return coreWords.length === 0 || coreWords.some(w => titleLower.includes(w));
   }).slice(0, maxResults);
 
-  // 본문 + 썸네일 fetch (전체)
-  for (let i = 0; i < filtered.length; i++) {
-    const content = await fetchBlogContent(filtered[i].url);
-    if (content.text.length > filtered[i].snippet.length) {
-      filtered[i].snippet = content.text.slice(0, 2000);
+  // 본문 + 썸네일 fetch — 상위 5건만 병렬로 (서버리스 타임아웃 최적화)
+  const CONTENT_FETCH_LIMIT = 5;
+  const toFetchContent = filtered.slice(0, CONTENT_FETCH_LIMIT);
+
+  const contentResults = await Promise.allSettled(
+    toFetchContent.map(post => fetchBlogContent(post.url)),
+  );
+
+  for (let i = 0; i < contentResults.length; i++) {
+    if (contentResults[i].status === 'fulfilled') {
+      const content = (contentResults[i] as PromiseFulfilledResult<BlogContentResult>).value;
+      if (content.text.length > toFetchContent[i].snippet.length) {
+        toFetchContent[i].snippet = content.text.slice(0, 2000);
+      }
+      if (content.thumbnail) {
+        toFetchContent[i].thumbnail = content.thumbnail;
+      }
     }
-    if (content.thumbnail) {
-      filtered[i].thumbnail = content.thumbnail;
-    }
-    if (i < filtered.length - 1) await new Promise(r => setTimeout(r, 150));
   }
 
   return filtered;

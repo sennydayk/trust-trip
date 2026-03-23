@@ -1,7 +1,8 @@
 // 검색 시작 엔드포인트 — 세션 생성 → 파이프라인 비동기 시작 → 즉시 sessionId 반환
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { startPipelineAsync, getPipelineState, initState } from '@/lib/pipeline/orchestrator';
+import { runPipeline, getPipelineState, initState } from '@/lib/pipeline/orchestrator';
+import { waitUntil } from '@vercel/functions';
 
 // Vercel 서버리스 함수 타임아웃 연장 (기본 10초 → 300초)
 // Free: 최대 60초, Pro: 최대 300초
@@ -54,8 +55,10 @@ export async function POST(request: NextRequest) {
     // 응답 전에 상태를 먼저 초기화 — 클라이언트 폴링 시 404 방지
     initState(sessionId);
 
-    // 파이프라인 비동기 시작
-    startPipelineAsync(sessionId, destination, cat, regionType, excludePlaceIds);
+    // 파이프라인 비동기 시작 — waitUntil로 응답 후에도 함수 유지
+    const pipelinePromise = runPipeline(sessionId, destination, cat, regionType, excludePlaceIds)
+      .catch(err => console.error(`[search] 파이프라인 에러 (${sessionId}):`, err));
+    waitUntil(pipelinePromise);
 
     return NextResponse.json({
       session_id: sessionId,

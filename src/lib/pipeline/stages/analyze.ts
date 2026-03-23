@@ -398,7 +398,7 @@ export async function analyzePlaces(
 
       const batchResults = await Promise.allSettled(
         batchPlaces.map(async place => {
-          const posts = await searchBlogsForPlace(place.name, dest, 20);
+          const posts = await searchBlogsForPlace(place.name, dest, 5);
           return { normalized_name: place.normalized_name, name: place.name, posts };
         }),
       );
