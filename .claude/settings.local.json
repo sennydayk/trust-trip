@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next:*)",
+      "Bash(sleep:*)",
+      "Bash(curl:*)",
+      "Bash(kill:*)",
+      "Read(//private/tmp/**)",
+      "Bash(node:*)",
+      "Bash(grep:*)",
+      "Bash(API_URL=http://localhost:3099 npx tsx scripts/test-search.ts 2>&1 | grep -A2 'BLOG')",
+      "Bash(API_URL=http://localhost:3099 npx tsx scripts/test-search.ts 2>&1 | tail -15)"
+    ]
+  }
+}
